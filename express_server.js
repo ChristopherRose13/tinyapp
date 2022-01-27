@@ -4,6 +4,9 @@ const app = express();
 const PORT = 8080; // default port 8080
 const bodyParser = require("body-parser");
 const cookieParser = require('cookie-parser');
+const bcrypt = require('bcryptjs');
+const password = "purple-monkey-dinosaur"; // found in the req.params object
+const hashedPassword = bcrypt.hashSync(password, 10);
 
 app.use(cookieParser());
 
@@ -72,8 +75,9 @@ const checkEmail = function(email) {
 
 const checkPassword = function(password) {
   let isGood = false;
+  bcrypt.compareSync("purple-monkey-dinosaur", hashedPassword);
   for (let user in users) {
-    if (users[user].password === password) {
+    if (bcrypt.compareSync(password, users[user].password)) {
       isGood = true;
     }
   }
@@ -223,7 +227,7 @@ app.post("/register", (req, res) => {
   let randoID = generateRandomString();
   let redirect = "urls";
   let email = req.body.email;
-  let password = req.body.password;
+  let password = bcrypt.hashSync(req.body.password, 10);
   if (validateEmail(email) && validatePassword(password)) {
     users[randoID] = {
       id: randoID,
