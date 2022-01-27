@@ -3,8 +3,9 @@ const res = require("express/lib/response");
 const app = express();
 const PORT = 8080; // default port 8080
 const bodyParser = require("body-parser");
-const crypto = require("crypto");
+const cookieParser = require('cookie-parser');
 
+app.use(cookieParser());
 
 app.use(bodyParser.urlencoded({extended: true}));
 app.set("view engine", "ejs");
@@ -12,6 +13,75 @@ app.set("view engine", "ejs");
 const urlDatabase = {
   "b2xVn2": "http://www.lighthouselabs.ca",
   "9sm5xK": "http://www.google.com"
+};
+
+const users = {
+  "userRandomID": {
+    id: "userRandomID",
+    email: "user@example.com",
+    password: "purple-monkey-dinosaur"
+  },
+  "user2RandomID": {
+    id: "user2RandomID",
+    email: "user2@example.com",
+    password: "dishwasher-funk"
+  }
+};
+
+//validates that an email is valid for new sign up
+const validateEmail = function(email) {
+  let isGood = true;
+  if (email === "") {
+    isGood = false;
+  }
+
+  for (let user in users) {
+    if (users[user].email === email) {
+      isGood = false;
+    }
+  }
+  return isGood;
+};
+
+//validates that a password is good for signup
+const validatePassword = function(password) {
+  let isGood = true;
+  if (password === "") {
+    isGood = false;
+  }
+
+  return isGood;
+};
+
+//checks that an email is acceptable for login
+const checkEmail = function(email) {
+  let isGood = false;
+  for (let user in users) {
+    if (users[user].email === email) {
+      isGood = true;
+    }
+  }
+  return isGood;
+};
+
+const checkPassword = function(password) {
+  let isGood = false;
+  for (let user in users) {
+    if (users[user].password === password) {
+      isGood = true;
+    }
+  }
+  return isGood;
+};
+
+const getUserIDbyEmail = function(email) {
+  let id = "";
+  for (let user in users) {
+    if (users[user].email === email) {
+      id = users[user].id;
+    }
+  }
+  return id;
 };
 
 const generateRandomString = function() {
@@ -25,23 +95,36 @@ app.get("/", (req, res) => {
 });
 
 app.get("/urls.json", (req, res) =>  {
-  const templateVars = {urls: urlDatabase};
+  const templateVars = {urls: urlDatabase, user: users[req.cookies["user_id"]]};
   res.render("urls_index", templateVars);
 });
 
+app.get("/register", (req, res) => {
+  const templateVars = {user: users[req.cookies["user_id"]]};
+  res.render("register", templateVars);
+});
+
 app.get("/urls/new", (req, res) => {
-  res.render("urls_new");
+  const templateVars = {user: users[req.cookies["user_id"]]};
+  res.render("urls_new", templateVars);
 });
 
 app.get("/urls/:shortURL", (req, res) => {
-  const templateVars = { shortURL: req.params.shortURL, longURL: urlDatabase[req.params.shortURL] };
+  const templateVars = { shortURL: req.params.shortURL, longURL: urlDatabase[req.params.shortURL], user: users[req.cookies["user_id"]]};
   res.render("urls_show", templateVars);
 });
 
 
 app.get("/urls", (req, res) => {
-  const templateVars = { urls: urlDatabase };
+
+  const templateVars = { urls: urlDatabase, user: users[req.cookies["user_id"]]};
   res.render("urls_index", templateVars);
+});
+
+app.get("/login", (req, res) => {
+
+  const templateVars = { urls: urlDatabase, user: users[req.cookies["user_id"]]};
+  res.render("login", templateVars);
 });
 
 app.get("/hello", (req, res) => {
@@ -54,20 +137,74 @@ app.get("/u/:shortURL", (req, res) => {
   res.redirect(longURL);
 });
 
+app.get("*", (req, res) => {
+  res.send("Sorry! the page does not exist");
+});
+
+app.post("/urls/:shortURL", (req, res) => {
+
+  let shortURL = req.params.shortURL;
+  let change = req.body.longURL;
+  urlDatabase[shortURL] = change;
+  res.redirect("/urls/");
+});
+
 app.post("/urls/:shortURL/delete", (req, res) => {
   let shortURL = req.params.shortURL;
   res.redirect("/urls/");
   delete urlDatabase[shortURL];
 });
 
+
 app.post("/urls", (req, res) => {
-  console.log(req.body);  // Log the POST request body to the console
   let shortURL = generateRandomString();
   urlDatabase[shortURL] = req.body.longURL;
   res.redirect("/urls/" + shortURL);
   // res.redirect(urlDatabase[shortURL]);
 });
 
+app.post("/login", (req, res) => {
+  let email = req.body.email;
+  let password = req.body.password;
+  let redirect = "/urls/";
+  if (checkEmail(email) && checkPassword(password)) {
+    res.cookie("user_id", getUserIDbyEmail(email));
+  } else {
+    res.status(403);
+    redirect = "/login";
+  }
+
+  res.redirect("redirect");
+});
+
+app.post("/logout", (req, res) => {
+  res.clearCookie("user_id");
+  res.redirect("/urls");
+});
+
+app.post("/register", (req, res) => {
+  let randoID = generateRandomString();
+  let redirect = "urls";
+  let email = req.body.email;
+  let password = req.body.password;
+  if (validateEmail(email) && validatePassword(password)) {
+    users[randoID] = {
+      id: randoID,
+      email,
+      password
+    };
+    res.cookie("user_id", randoID);
+  } else {
+    redirect = "error";
+  }
+
+  res.redirect(redirect);
+});
+
+app.post("*", (req, res) => {
+  res.status(404);
+  res.send("404 ERROR");
+});
 
 app.listen(PORT, () => {
   console.log(`Example app listening on port ${PORT}!`);
