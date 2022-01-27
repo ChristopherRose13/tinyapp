@@ -19,9 +19,11 @@
               <button type="submit" class="btn btn-outline-primary">Login</button>
             </form>
             <% } %>
+            <% if (!user) { %>
         <form method="GET" action="/register">
           <button type="submit" class="btn btn-outline-primary">Register</button>
          </form>
+         <% } %>
         <a class="nav-item nav-link" href="/urls">My URLs</a>
         <a class="nav-item nav-link" href="/urls/new">Create New URL</a>
       </div>

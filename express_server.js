@@ -105,8 +105,13 @@ app.get("/register", (req, res) => {
 });
 
 app.get("/urls/new", (req, res) => {
+  console.log(req.cookies["user_id"]);
+  let render = "urls_new";
+  if (req.cookies["user_id"] === undefined) {
+    render = "login";
+  }
   const templateVars = {user: users[req.cookies["user_id"]]};
-  res.render("urls_new", templateVars);
+  res.render(render, templateVars);
 });
 
 app.get("/urls/:shortURL", (req, res) => {
@@ -174,7 +179,7 @@ app.post("/login", (req, res) => {
     redirect = "/login";
   }
 
-  res.redirect("redirect");
+  res.redirect(redirect);
 });
 
 app.post("/logout", (req, res) => {
@@ -195,7 +200,8 @@ app.post("/register", (req, res) => {
     };
     res.cookie("user_id", randoID);
   } else {
-    redirect = "error";
+    res.status = 400;
+    redirect = "/register";
   }
 
   res.redirect(redirect);
