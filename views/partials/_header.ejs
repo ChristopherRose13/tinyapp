@@ -1,32 +1,65 @@
 <header>
   <nav class="navbar navbar-expand-md navbar-dark bg-success">
     <a class="navbar-brand" href="/urls">TinyApp</a>
-    <% if(user) { %>
+    <!-- <% if(user) { %>
     <h5 style="margin-right: 16px;"><%= user.email %></h5>
-    <% } %>
+    <% } %> -->
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
-      <div class="navbar-nav">
         
-          <% if(user) { %>
+          <!-- <% if(user) { %>
             <form method="POST" action="/logout">
               <button type="submit" class="btn btn-outline-primary">Logout</button>
             </form>
+            
           <% } else {%>
-            <form method="GET" action="/login">
-              <button type="submit" class="btn btn-outline-primary">Login</button>
-            </form>
+            <a class="nav-item nav-link" href="/login">Login</a>
             <% } %>
             <% if (!user) { %>
         <form method="GET" action="/register">
           <button type="submit" class="btn btn-outline-primary">Register</button>
          </form>
-         <% } %>
-        <a class="nav-item nav-link" href="/urls">My URLs</a>
-        <a class="nav-item nav-link" href="/urls/new">Create New URL</a>
-      </div>
+         <% } %> -->
+      <% if (user) { %>
+        <div class="navbar-nav">
+          <a class="nav-item nav-link" href="/urls">My URLs</a>
+          <a class="nav-item nav-link" href="/urls/new">Create New URL</a>
+        </div>
+        <div class="navbar-nav ml-auto d-flex align-items-center">
+          <a class="nav-item nav-link" href="#"
+            >User:
+            <span class="text-white font-weight-bold"> <%= user.email %></span></a
+          ><a class="nav-item nav-link" href="/logout"
+            ><button
+              type="submit"
+              class="btn btn-info text-white text-capitalize font-weight-bold"
+            >
+              logout
+            </button></a
+          >
+        </div>
+        <% } else { %>
+        <div class="navbar-nav ml-auto d-flex align-items-center">
+          <a href="/login">
+            <button
+              type="submit"
+              class="btn btn-info text-white text-capitalize font-weight-bold"
+            >
+              login
+            </button></a
+          >
+          <a href="/register">
+            <button
+              type="submit"
+              class="btn btn-info text-white text-capitalize font-weight-bold"
+            >
+              register
+            </button></a
+          >
+        </div>
+        <% } %>
     </div>
   </nav>
 </header>

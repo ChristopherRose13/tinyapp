@@ -1,14 +1,25 @@
 const express = require("express");
+const helper = require("./helpers");
 const res = require("express/lib/response");
 const app = express();
 const PORT = 8080; // default port 8080
 const bodyParser = require("body-parser");
 const cookieParser = require('cookie-parser');
+const cookieSession = require('cookie-session');
 const bcrypt = require('bcryptjs');
+const { redirect } = require("express/lib/response");
+const req = require("express/lib/request");
 const password = "purple-monkey-dinosaur"; // found in the req.params object
 const hashedPassword = bcrypt.hashSync(password, 10);
 
 app.use(cookieParser());
+app.use(cookieSession({
+  name: 'session',
+  keys: ["dinsoaur", "hello", "mustard"],
+
+  // Cookie Options
+  maxAge: 24 * 60 * 60 * 1000 // 24 hours
+}));
 
 app.use(bodyParser.urlencoded({extended: true}));
 app.set("view engine", "ejs");
@@ -28,7 +39,7 @@ const users = {
   "userRandomID": {
     id: "userRandomID",
     email: "user@example.com",
-    password: "purple-monkey-dinosaur"
+    password: "$2a$10$rejKRGWIZdqnezjr5Xo4ZeAHKueb6Av85MUCz/25LFa//tRirPi.u"
   },
   "user2RandomID": {
     id: "user2RandomID",
@@ -62,47 +73,25 @@ const validatePassword = function(password) {
   return isGood;
 };
 
-//checks that an email is acceptable for login
-const checkEmail = function(email) {
-  let isGood = false;
+
+const findEmail = (users, email) => {
   for (let user in users) {
     if (users[user].email === email) {
-      isGood = true;
+      return true;
     }
   }
-  return isGood;
+  return false;
 };
 
-const checkPassword = function(password) {
-  let isGood = false;
-  bcrypt.compareSync("purple-monkey-dinosaur", hashedPassword);
+const authLogin = function(users, email, password) {
   for (let user in users) {
-    if (bcrypt.compareSync(password, users[user].password)) {
-      isGood = true;
+    const userEmailFound = findEmail(users, email);
+
+    if (userEmailFound && bcrypt.compareSync(password, users[user].password)) {
+      return users[user];
     }
   }
-  return isGood;
-};
-
-const getUserIDbyEmail = function(email) {
-  let id = "";
-  for (let user in users) {
-    if (users[user].email === email) {
-      id = users[user].id;
-    }
-  }
-  return id;
-};
-
-const getURLsByUser = function(user) {
-
-  let urls = {};
-  for (let url in urlDatabase) {
-    if (urlDatabase[url].userID === user) {
-      urls[url] = urlDatabase[url];
-    }
-  }
-  return urls;
+  return false;
 };
 
 const generateRandomString = function() {
@@ -111,48 +100,111 @@ const generateRandomString = function() {
   return randomString;
 };
 
+const fetchUserUrls = (urlDatabase, sessionID) => {
+  let userUrls = {};
+  for (let shortUrl in urlDatabase) {
+    if (urlDatabase[shortUrl].userID === sessionID) {
+      userUrls[shortUrl] = {
+        userID: sessionID,
+        longURL: urlDatabase[shortUrl].longURL
+      };
+
+    }
+  }
+  
+  return userUrls;
+};
+// fetching all urls for unregistered user
+const fetchAllUrls = () => {
+  let userUrls = {};
+  for (let shortUrl in urlDatabase) {
+    userUrls[shortUrl] = urlDatabase[shortUrl].longURL;
+  }
+  return userUrls;
+};
+
 app.get("/", (req, res) => {
-  res.send("Hello!");
+  if (!req.session) {
+    // eslint-disable-next-line camelcase
+    const templateVars = {err_msg: "Please login"};
+    res.render("/login", templateVars);
+  }
+
+  if (req.session) {
+    return res.redirect("/urls");
+  }
+
+  res.write("How did you get here??");
 });
 
 app.get("/urls.json", (req, res) =>  {
-  const templateVars = {urls: urlDatabase, user: users[req.cookies["user_id"]]};
+  const templateVars = {urls: urlDatabase, user: req.session.user_id};
   res.render("urls_index", templateVars);
 });
 
 app.get("/register", (req, res) => {
-  const templateVars = {user: users[req.cookies["user_id"]]};
+  const templateVars = {user: undefined};
   res.render("register", templateVars);
 });
 
 app.get("/urls/new", (req, res) => {
-  console.log(req.cookies["user_id"]);
-  let render = "urls_new";
-  if (req.cookies["user_id"] === undefined) {
-    render = "login";
+  
+  if (req.session.user_id === null) {
+    
+    return res.redirect("/login");
   }
-  const templateVars = {user: users[req.cookies["user_id"]]};
-  res.render(render, templateVars);
+  const templateVars = {user: req.session.user_id};
+  res.render("urls_new", templateVars);
 });
 
 app.get("/urls/:shortURL", (req, res) => {
-  const templateVars = { shortURL: req.params.shortURL, longURL: urlDatabase[req.params.shortURL].longURL, user: users[req.cookies["user_id"]]};
+  if (req.session.user_id === null) {
+    return res.redirect("/login");
+  }
+
+  if (!urlDatabase[req.params.shortURL]) {
+    res.status(404).send("Not a valid URL");
+  }
+  
+  const templateVars = { shortURL: req.params.shortURL, longURL: urlDatabase[req.params.shortURL].longURL, user: req.session.user_id};
   res.render("urls_show", templateVars);
 });
 
-
 app.get("/urls", (req, res) => {
-  const user = users[req.cookies["user_id"]];
-  console.log("user: " + user);
-  const userUrls = getURLsByUser(req.cookies["user_id"]);
-  console.log("userURL: ", userUrls);
-  const templateVars = { urls: userUrls, user: users[req.cookies["user_id"]]};
+  // eslint-disable-next-line camelcase
+  const session_user_id = req.session["user_id"];
+
+  // eslint-disable-next-line camelcase
+  if (session_user_id === null) {
+    return res.redirect("/login");
+  }
+  let userUrls;
+
+  // eslint-disable-next-line camelcase
+  if (session_user_id !== null) {
+    userUrls = fetchUserUrls(urlDatabase, session_user_id);
+  }
+  // eslint-disable-next-line camelcase
+  const user = users[`${session_user_id}`];
+  
+  const templateVars = {
+    user: user,
+    urls: userUrls
+  };
   res.render("urls_index", templateVars);
 });
 
 app.get("/login", (req, res) => {
-
-  const templateVars = { urls: urlDatabase, user: users[req.cookies["user_id"]]};
+  // eslint-disable-next-line camelcase
+  const session_user_id = req.session["user_id"];
+  // eslint-disable-next-line camelcase
+  if (session_user_id !== null) {
+    return redirect("/urls");
+  }
+  // eslint-disable-next-line camelcase
+  const user = users[session_user_id];
+  // eslint-disable-next-line camelcase
+  const templateVars = { urls: urlDatabase, user, err_msg: ""};
   res.render("login", templateVars);
 });
 
@@ -161,14 +213,19 @@ app.get("/hello", (req, res) => {
 });
 
 app.get("/u/:shortURL", (req, res) => {
+  
   const shortURL = req.params.shortURL;
   const longURL = urlDatabase[shortURL].longURL;
+
   res.redirect(longURL);
 });
 
-app.get("*", (req, res) => {
-  res.send("Sorry! the page does not exist");
+app.get("/logout", (req, res) => {
+  // eslint-disable-next-line camelcase
+  req.session.user_id = null;
+  res.redirect("/urls");
 });
+
 
 app.post("/urls/:shortURL", (req, res) => {
 
@@ -176,10 +233,8 @@ app.post("/urls/:shortURL", (req, res) => {
  
   let change = req.body.longURL;
 
-  if (urlDatabase[shortURL].userID === req.cookies["user_id"]) {
+  if (urlDatabase[shortURL].userID === req.session.user_id) {
     urlDatabase[shortURL]["longURL"] = change;
-  } else {
-    console.log("item not updated");
   }
 
   res.redirect("/urls/");
@@ -188,10 +243,8 @@ app.post("/urls/:shortURL", (req, res) => {
 app.post("/urls/:shortURL/delete", (req, res) => {
   let shortURL = req.params.shortURL;
 
-  if (urlDatabase[shortURL].userID === req.cookies["user_id"]) {
+  if (urlDatabase[shortURL].userID === req.session.user_id) {
     delete urlDatabase[shortURL];
-  } else {
-    console.log("item not deleted");
   }
   res.redirect("/urls/");
 });
@@ -199,7 +252,7 @@ app.post("/urls/:shortURL/delete", (req, res) => {
 
 app.post("/urls", (req, res) => {
   let shortURL = generateRandomString();
-  urlDatabase[shortURL] = {longURL: req.body.longURL, userID: req.cookies["user_id"]};
+  urlDatabase[shortURL] = {longURL: req.body.longURL, userID: req.session.user_id};
   res.redirect("/urls/" + shortURL);
   // res.redirect(urlDatabase[shortURL]);
 });
@@ -207,20 +260,32 @@ app.post("/urls", (req, res) => {
 app.post("/login", (req, res) => {
   let email = req.body.email;
   let password = req.body.password;
-  let redirect = "/urls/";
-  if (checkEmail(email) && checkPassword(password)) {
-    res.cookie("user_id", getUserIDbyEmail(email));
-  } else {
-    res.status(403);
-    redirect = "/login";
+  // eslint-disable-next-line camelcase
+  const session_user_id = req.session["user_id"];
+  if (email === "" || password === "") {
+    const templateVars = {
+      // eslint-disable-next-line camelcase
+      user: users[session_user_id],
+      // eslint-disable-next-line camelcase
+      err_msg: "email or password cannot be empty"
+    };
+    res.render("login", templateVars);
+    return;
   }
-
-  res.redirect(redirect);
-});
-
-app.post("/logout", (req, res) => {
-  res.clearCookie("user_id");
-  res.redirect("/urls");
+  const findUser = authLogin(users, email, password);
+  const id = findUser.id;
+  if (!findUser) {
+    // eslint-disable-next-line camelcase
+    const user = users[session_user_id];
+    const templateVars = {
+      user,
+      // eslint-disable-next-line camelcase
+      err_msg: `Sorry the email : ${email} or password ${password} is not available`
+    };
+    return res.render("login", templateVars);
+  }
+  req.session["user_id"] = id;
+  return res.redirect("/urls");
 });
 
 app.post("/register", (req, res) => {
@@ -234,13 +299,19 @@ app.post("/register", (req, res) => {
       email,
       password
     };
-    res.cookie("user_id", randoID);
+    // eslint-disable-next-line camelcase
+    req.session.user_id = randoID;
   } else {
-    res.status = 400;
+    res.status(403).send("email or password are not available");
     redirect = "/register";
   }
 
   res.redirect(redirect);
+});
+
+
+app.get("*", (req, res) => {
+  res.send("Sorry! the page does not exist");
 });
 
 app.post("*", (req, res) => {

@@ -9,7 +9,10 @@
   <title>TinyApp</title>
 </head>
 <body>
-  <%- include('partials/_header') %> 
+  <header>
+    <% if (user) { %> <%- include('partials/_header', {user: user}) %> <%}
+      else { %> <%- include('partials/_header') %> <% } %>
+  </header>
   <main style="margin: 1em;">
     <h3>My URLs</h3>
     <table class="table">
@@ -29,8 +32,6 @@
               <form method="GET" action="/urls/<%= url %>">
               <button type="submit" class="btn btn-outline-info">Update</button>
             </form></td>
-
-          
             <td>
               <form method="POST" action="/urls/<%= url %>/delete">
                 <button type="submit" class="btn btn-outline-danger">Delete</button>
