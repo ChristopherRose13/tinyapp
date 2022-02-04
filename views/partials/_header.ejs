@@ -31,13 +31,13 @@
           <a class="nav-item nav-link" href="#"
             >User:
             <span class="text-white font-weight-bold"> <%= user.email %></span></a
-          ><a class="nav-item nav-link" href="/logout"
+          ><form method="POST" action="/logout"
             ><button
               type="submit"
               class="btn btn-info text-white text-capitalize font-weight-bold"
             >
               logout
-            </button></a
+            </button></form
           >
         </div>
         <% } else { %>

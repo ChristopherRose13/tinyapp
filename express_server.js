@@ -1,3 +1,4 @@
+/* eslint-disable camelcase */
 const express = require("express");
 const helper = require("./helpers");
 const res = require("express/lib/response");
@@ -7,10 +8,8 @@ const bodyParser = require("body-parser");
 const cookieParser = require('cookie-parser');
 const cookieSession = require('cookie-session');
 const bcrypt = require('bcryptjs');
-const { redirect } = require("express/lib/response");
+const { redirect, send } = require("express/lib/response");
 const req = require("express/lib/request");
-const password = "purple-monkey-dinosaur"; // found in the req.params object
-const hashedPassword = bcrypt.hashSync(password, 10);
 
 app.use(cookieParser());
 app.use(cookieSession({
@@ -39,7 +38,7 @@ const users = {
   "userRandomID": {
     id: "userRandomID",
     email: "user@example.com",
-    password: "$2a$10$rejKRGWIZdqnezjr5Xo4ZeAHKueb6Av85MUCz/25LFa//tRirPi.u"
+    password: "password"
   },
   "user2RandomID": {
     id: "user2RandomID",
@@ -63,69 +62,35 @@ const validateEmail = function(email) {
   return isGood;
 };
 
-//validates that a password is good for signup
-const validatePassword = function(password) {
-  let isGood = true;
-  if (password === "") {
-    isGood = false;
-  }
-
-  return isGood;
-};
-
-
-const findEmail = (users, email) => {
-  for (let user in users) {
-    if (users[user].email === email) {
-      return true;
-    }
-  }
-  return false;
-};
-
+//logs the user in if the email and password exist and match the user
 const authLogin = function(users, email, password) {
   for (let user in users) {
-    const userEmailFound = findEmail(users, email);
-
-    if (userEmailFound && bcrypt.compareSync(password, users[user].password)) {
-      return users[user];
+    const userEmailFound = helper.findEmail(users, email);
+    console.log("passed word:", password);
+    console.log("user ", users[user].password);
+    if (userEmailFound && bcrypt.compareSync(password, users[user].password) && users[user].email === email) {
+      return user;
     }
   }
   return false;
 };
 
-const generateRandomString = function() {
-  let randomString = Math.random().toString(36).slice(2);
-  randomString = randomString.slice(0,6);
-  return randomString;
-};
+//returns the urls that a user has created
+const getURLsByUser = function(user) {
 
-const fetchUserUrls = (urlDatabase, sessionID) => {
-  let userUrls = {};
-  for (let shortUrl in urlDatabase) {
-    if (urlDatabase[shortUrl].userID === sessionID) {
-      userUrls[shortUrl] = {
-        userID: sessionID,
-        longURL: urlDatabase[shortUrl].longURL
-      };
-
+  let urls = {};
+  for (let url in urlDatabase) {
+    if (urlDatabase[url].userID === user) {
+      urls[url] = urlDatabase[url];
     }
   }
-  
-  return userUrls;
-};
-// fetching all urls for unregistered user
-const fetchAllUrls = () => {
-  let userUrls = {};
-  for (let shortUrl in urlDatabase) {
-    userUrls[shortUrl] = urlDatabase[shortUrl].longURL;
-  }
-  return userUrls;
+  return urls;
 };
 
+//redirects user to /urls if they dont specify a page
 app.get("/", (req, res) => {
+  
   if (!req.session) {
-    // eslint-disable-next-line camelcase
     const templateVars = {err_msg: "Please login"};
     res.render("/login", templateVars);
   }
@@ -138,11 +103,13 @@ app.get("/", (req, res) => {
 });
 
 app.get("/urls.json", (req, res) =>  {
+
   const templateVars = {urls: urlDatabase, user: req.session.user_id};
   res.render("urls_index", templateVars);
 });
 
 app.get("/register", (req, res) => {
+
   const templateVars = {user: undefined};
   res.render("register", templateVars);
 });
@@ -158,33 +125,41 @@ app.get("/urls/new", (req, res) => {
 });
 
 app.get("/urls/:shortURL", (req, res) => {
-  if (req.session.user_id === null) {
-    return res.redirect("/login");
+  let shortUrl = req.params.shortURL;
+
+  if (!req.session.user_id) {
+    res.status(404).send("Please login to view");
   }
 
   if (!urlDatabase[req.params.shortURL]) {
     res.status(404).send("Not a valid URL");
   }
-  
-  const templateVars = { shortURL: req.params.shortURL, longURL: urlDatabase[req.params.shortURL].longURL, user: req.session.user_id};
-  res.render("urls_show", templateVars);
+  //returns users urls and if the shortUrl matches it sends the user to the url page
+  const userUrls = getURLsByUser(req.session.user_id);
+  if (userUrls[shortUrl]) {
+    const templateVars = { shortURL: shortUrl, longURL: urlDatabase[req.params.shortURL].longURL, user: req.session.user_id};
+    res.render("urls_show", templateVars);
+  }
+
+  if (!userUrls[shortUrl]) {
+    res.status(404).send("url does not exist");
+  }
+
 });
 
 app.get("/urls", (req, res) => {
-  // eslint-disable-next-line camelcase
+
   const session_user_id = req.session["user_id"];
 
-  // eslint-disable-next-line camelcase
-  if (session_user_id === null) {
-    return res.redirect("/login");
+  if (!session_user_id) {
+    res.status(404).send("Please login to view");
   }
   let userUrls;
 
-  // eslint-disable-next-line camelcase
   if (session_user_id !== null) {
-    userUrls = fetchUserUrls(urlDatabase, session_user_id);
+    userUrls = helper.fetchUserUrls(urlDatabase, session_user_id);
   }
-  // eslint-disable-next-line camelcase
+  
   const user = users[`${session_user_id}`];
   
   const templateVars = {
@@ -195,15 +170,14 @@ app.get("/urls", (req, res) => {
 });
 
 app.get("/login", (req, res) => {
-  // eslint-disable-next-line camelcase
   const session_user_id = req.session["user_id"];
-  // eslint-disable-next-line camelcase
-  if (session_user_id !== null) {
-    return redirect("/urls");
+  
+  if (session_user_id) {
+    console.log(session_user_id);
+    res.status(403).send("You are already logged in");
   }
-  // eslint-disable-next-line camelcase
+  
   const user = users[session_user_id];
-  // eslint-disable-next-line camelcase
   const templateVars = { urls: urlDatabase, user, err_msg: ""};
   res.render("login", templateVars);
 });
@@ -216,17 +190,22 @@ app.get("/u/:shortURL", (req, res) => {
   
   const shortURL = req.params.shortURL;
   const longURL = urlDatabase[shortURL].longURL;
+  if (!longURL) {
+    res.status(404).send("Sorry! the page does not exist");
+  }
 
   res.redirect(longURL);
 });
 
-app.get("/logout", (req, res) => {
+//logs user out and deletes cookies
+app.post("/logout", (req, res) => {
   // eslint-disable-next-line camelcase
-  req.session.user_id = null;
-  res.redirect("/urls");
+  // req.session.user_id = null;
+  req.session = null;
+  res.redirect("/login");
 });
 
-
+//creates a short url link
 app.post("/urls/:shortURL", (req, res) => {
 
   let shortURL = req.params.shortURL;
@@ -240,6 +219,7 @@ app.post("/urls/:shortURL", (req, res) => {
   res.redirect("/urls/");
 });
 
+//deletes a short url link
 app.post("/urls/:shortURL/delete", (req, res) => {
   let shortURL = req.params.shortURL;
 
@@ -249,59 +229,72 @@ app.post("/urls/:shortURL/delete", (req, res) => {
   res.redirect("/urls/");
 });
 
-
+//sends the user to the /urls page
 app.post("/urls", (req, res) => {
-  let shortURL = generateRandomString();
+  const session_user_id = req.session["user_id"];
+  if (!session_user_id) {
+    res.status(403).send("please login to view");
+  }
+  let shortURL = helper.generateRandomString();
   urlDatabase[shortURL] = {longURL: req.body.longURL, userID: req.session.user_id};
   res.redirect("/urls/" + shortURL);
-  // res.redirect(urlDatabase[shortURL]);
+
 });
 
+//logs the user in
 app.post("/login", (req, res) => {
   let email = req.body.email;
   let password = req.body.password;
-  // eslint-disable-next-line camelcase
   const session_user_id = req.session["user_id"];
-  if (email === "" || password === "") {
+
+  //input validation
+  if (!email || !password) {
     const templateVars = {
-      // eslint-disable-next-line camelcase
+      
       user: users[session_user_id],
-      // eslint-disable-next-line camelcase
+      
       err_msg: "email or password cannot be empty"
     };
     res.render("login", templateVars);
     return;
   }
+
+  //returns the user id if the login credentials match
   const findUser = authLogin(users, email, password);
-  const id = findUser.id;
+ 
+  //error handling for if the user does not exist
   if (!findUser) {
-    // eslint-disable-next-line camelcase
     const user = users[session_user_id];
     const templateVars = {
       user,
-      // eslint-disable-next-line camelcase
       err_msg: `Sorry the email : ${email} or password ${password} is not available`
     };
     return res.render("login", templateVars);
   }
-  req.session["user_id"] = id;
+
+  //if no errors redirectst to /urls
+  req.session["user_id"] = findUser;
   return res.redirect("/urls");
 });
 
+//registers a new user
 app.post("/register", (req, res) => {
-  let randoID = generateRandomString();
+  let randoID = helper.generateRandomString();
   let redirect = "urls";
   let email = req.body.email;
-  let password = bcrypt.hashSync(req.body.password, 10);
-  if (validateEmail(email) && validatePassword(password)) {
+  let password = req.body.password;
+
+  if (validateEmail(email) && helper.validatePassword(password)) {
+    password = bcrypt.hashSync(password, 10);
     users[randoID] = {
       id: randoID,
       email,
       password
     };
-    // eslint-disable-next-line camelcase
+    
     req.session.user_id = randoID;
   } else {
+    //error handling if the email or passowrd is already used or too does not exist
     res.status(403).send("email or password are not available");
     redirect = "/register";
   }
